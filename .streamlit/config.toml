@@ -1,5 +1,11 @@
+[server]
+port = 8501
+headless = true
+runOnSave = true
+enableXsrfProtection = false
+
 [client]
-showErrorDetails = false
+toolbarMode = "minimal"
 
 [logger]
-level = "error"
+level = "info"
