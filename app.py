@@ -415,32 +415,40 @@ st.markdown("---")
 
 st.markdown("Faça uma Pergunta ao Bob")
 
-# Initialize session states
-if 'messages_procedimentos' not in st.session_state:
-    st.session_state.messages_procedimentos = []
-if 'messages_produtos' not in st.session_state:
-    st.session_state.messages_produtos = []
+# Initialize session state (histórico único, com o assunto de cada pergunta salvo junto)
+if 'messages_bob' not in st.session_state:
+    st.session_state.messages_bob = []
 
-# Seção Sobre Procedimentos
-prompt_procedimentos = st.chat_input("Digite sua pergunta sobre procedimentos...", key="chat_procedimentos")
-if prompt_procedimentos:
-    st.session_state.messages_procedimentos.append({"role": "user", "content": prompt_procedimentos})
+# Seletor de assunto — evita ter dois st.chat_input fixos ao mesmo tempo,
+# que é o que causava o erro de DOM (removeChild) no navegador.
+assunto = st.radio(
+    "Sobre o que é a sua pergunta?",
+    ["Procedimentos", "Produtos"],
+    horizontal=True,
+    key="assunto_bob"
+)
+
+# Reexibe o histórico já trocado nesta sessão
+for msg in st.session_state.messages_bob:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+placeholder = (
+    "Digite sua pergunta sobre procedimentos..."
+    if assunto == "Procedimentos"
+    else "Digite sua pergunta sobre produtos..."
+)
+
+# Único st.chat_input fixo na página, chamado sempre no mesmo lugar da árvore
+prompt_bob = st.chat_input(placeholder, key="chat_bob")
+if prompt_bob:
+    st.session_state.messages_bob.append({"role": "user", "content": prompt_bob})
     with st.chat_message("user"):
-        st.markdown(prompt_procedimentos)
+        st.markdown(prompt_bob)
 
-    response = search_file("Chat Auditoria Odontológica.txt", prompt_procedimentos)
-    st.session_state.messages_procedimentos.append({"role": "assistant", "content": response})
-    with st.chat_message("assistant"):
-        st.markdown(response)
+    arquivo_busca = "Chat Auditoria Odontológica.txt" if assunto == "Procedimentos" else "Produtostxt.txt"
+    response = search_file(arquivo_busca, prompt_bob)
 
-# Seção Sobre Produtos
-prompt_produtos = st.chat_input("Digite sua pergunta sobre produtos...", key="chat_produtos")
-if prompt_produtos:
-    st.session_state.messages_produtos.append({"role": "user", "content": prompt_produtos})
-    with st.chat_message("user"):
-        st.markdown(prompt_produtos)
-
-    response = search_file("Produtostxt.txt", prompt_produtos)
-    st.session_state.messages_produtos.append({"role": "assistant", "content": response})
+    st.session_state.messages_bob.append({"role": "assistant", "content": response})
     with st.chat_message("assistant"):
         st.markdown(response)
