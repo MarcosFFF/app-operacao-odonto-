@@ -1,15 +1,18 @@
 import streamlit as st
 import pandas as pd
 import os
-import unicodedata
-from PIL import Image
-import difflib
-import base64
 import glob
 import re
+import unicodedata
+import base64
+import difflib
 
 st.set_page_config(page_title="Hapvida + Odonto", layout="wide", initial_sidebar_state="collapsed")
 
+
+# ----------------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------------
 
 def get_img_as_base64(path):
     with open(path, "rb") as img_file:
@@ -23,26 +26,101 @@ def normalize_name(name):
     return name
 
 
-image_path = "imagem_fundo.png"
-if os.path.exists(image_path):
-    b64 = get_img_as_base64(image_path)
-    st.markdown(
-        f"""
-        <style>
-            .bg-top {{
-                height: 40vh;
-                width: 100%;
-                margin-top: -600px;
-                background-image: url(data:image/png;base64,{b64});
-                background-size: cover;
-                background-position: center center;
-                background-repeat: no-repeat;
-            }}
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-    st.markdown('<div class="bg-top"></div>', unsafe_allow_html=True)
+def encontrar_arquivo(padrao):
+    """Procura um arquivo pelo padrão (glob), tolerando pequenas variações de nome
+    (acentos, espaços, sufixos) que costumam quebrar entre Windows e o Linux do
+    Streamlit Cloud. Retorna o primeiro encontrado ou None."""
+    candidatos = glob.glob(padrao)
+    return candidatos[0] if candidatos else None
+
+
+def ler_texto_arquivo(caminho):
+    """Lê um .txt tentando utf-8 primeiro e caindo para latin-1/cp1252 se
+    necessário. Alguns dos arquivos de apoio deste projeto foram exportados do
+    Windows em cp1252 e quebravam a leitura forçada em utf-8, derrubando o
+    app no meio de um rerender (o que o navegador mostra como um erro
+    genérico de DOM, tipo 'removeChild')."""
+    for enc in ("utf-8", "utf-8-sig", "cp1252", "latin-1"):
+        try:
+            with open(caminho, "r", encoding=enc) as f:
+                return f.read()
+        except (UnicodeDecodeError, LookupError):
+            continue
+    with open(caminho, "r", encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
+def search_file(filename, query):
+    if not filename or not os.path.exists(filename):
+        return f"Arquivo '{filename}' não encontrado no projeto."
+    try:
+        conteudo = ler_texto_arquivo(filename)
+        lines = [line.strip() for line in conteudo.splitlines() if line.strip()]
+        query_lower = query.lower()
+        query_words = query_lower.split()
+        relevant = []
+        for line in lines:
+            line_lower = line.lower()
+            if query_lower in line_lower or any(word in line_lower for word in query_words):
+                relevant.append(line)
+        if relevant:
+            response = ' '.join(relevant[:10])[:2000]
+            return response + f"\n\nFonte: {os.path.basename(filename)}"
+        else:
+            return f"Desculpe, não encontrei informações relevantes sobre '{query}'."
+    except Exception as e:
+        return f"Erro ao ler o arquivo de apoio: {e}"
+
+
+def find_column(df, keywords):
+    cols_lower = [col.lower() for col in df.columns]
+    for kw in keywords:
+        kw_lower = kw.lower()
+        matches = difflib.get_close_matches(kw_lower, cols_lower, n=1, cutoff=0.6)
+        if matches:
+            idx = cols_lower.index(matches[0])
+            return df.columns[idx]
+    return None
+
+
+# ----------------------------------------------------------------------------
+# Caminhos dos arquivos de apoio (tolerantes a pequenas variações de nome)
+# ----------------------------------------------------------------------------
+ARQUIVO_EXCEL = encontrar_arquivo("AUDITORIA_ODONTO_2026*.xlsx")
+ARQUIVO_IMG_FUNDO = encontrar_arquivo("imagem_fundo*.png")
+ARQUIVO_LOGO = encontrar_arquivo("logo*pbi*.jpg") or encontrar_arquivo("logo*pbi*.jpeg") or encontrar_arquivo("logo*pbi*.png")
+ARQUIVO_CHAT_PROCEDIMENTOS = (
+    encontrar_arquivo("Chat*Auditoria*Odontol*.txt")
+    or encontrar_arquivo("Chat_Auditoria_Odontologica.txt")
+)
+ARQUIVO_PRODUTOS_TXT = encontrar_arquivo("Produtostxt*.txt") or encontrar_arquivo("Produtos*.txt")
+
+
+# ----------------------------------------------------------------------------
+# Estilos / imagem de topo
+# ----------------------------------------------------------------------------
+if ARQUIVO_IMG_FUNDO and os.path.exists(ARQUIVO_IMG_FUNDO):
+    try:
+        b64 = get_img_as_base64(ARQUIVO_IMG_FUNDO)
+        st.markdown(
+            f"""
+            <style>
+                .bg-top {{
+                    height: 40vh;
+                    width: 100%;
+                    margin-top: -600px;
+                    background-image: url(data:image/png;base64,{b64});
+                    background-size: cover;
+                    background-position: center center;
+                    background-repeat: no-repeat;
+                }}
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+        st.markdown('<div class="bg-top"></div>', unsafe_allow_html=True)
+    except Exception:
+        pass
 
 st.markdown("""
 <style>
@@ -82,6 +160,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# ----------------------------------------------------------------------------
+# Login
+# ----------------------------------------------------------------------------
 def verificar_senha():
     if 'senha_correta' not in st.session_state:
         st.session_state.senha_correta = False
@@ -90,7 +171,6 @@ def verificar_senha():
             """
             <style>
                 .stApp {
-                    background-image: url("fundo.jpg");
                     background-size: cover;
                     background-position: center;
                     background-repeat: no-repeat;
@@ -101,26 +181,17 @@ def verificar_senha():
                     justify-content: center;
                     margin-top: 10%;
                 }
-                .password-container {
-                    display: flex;
-                    justify-content: center;
-                    margin-top: 20%;
-                    width: 100%;
-                }
-                .password-box {
-                    background: rgba(255, 255, 255, 0.9);
-                    padding: 2rem;
-                    border-radius: 10px;
-                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                    width: 300px;
-                }
             </style>
             """,
             unsafe_allow_html=True
         )
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            st.image("logo pbi.jpg", width=250)
+            if ARQUIVO_LOGO and os.path.exists(ARQUIVO_LOGO):
+                try:
+                    st.image(ARQUIVO_LOGO, width=250)
+                except Exception:
+                    pass
         with st.form("login_form"):
             senha = st.text_input("Senha:", type="password")
             entrar = st.form_submit_button("Acessar")
@@ -134,11 +205,16 @@ def verificar_senha():
         st.stop()
 
 
+# ----------------------------------------------------------------------------
+# Dados
+# ----------------------------------------------------------------------------
 @st.cache_data
-def carregar_dados():
-    arquivo = "AUDITORIA_ODONTO_2026.xlsx"
-    if not os.path.exists(arquivo):
-        st.error(f"Arquivo '{arquivo}' não encontrado!")
+def carregar_dados(arquivo):
+    if not arquivo or not os.path.exists(arquivo):
+        st.error(
+            "Arquivo de dados 'AUDITORIA_ODONTO_2026.xlsx' não encontrado no projeto. "
+            "Verifique se ele foi enviado ao repositório com esse nome."
+        )
         st.stop()
 
     def limpar_colunas(df):
@@ -181,77 +257,8 @@ def carregar_dados():
     return glosas_limpo, proc_limpo, regras_gerais_limpo, regras_espec_limpo, produtos_limpo
 
 
-def find_column(df, keywords):
-    cols_lower = [col.lower() for col in df.columns]
-    for kw in keywords:
-        kw_lower = kw.lower()
-        matches = difflib.get_close_matches(kw_lower, cols_lower, n=1, cutoff=0.6)
-        if matches:
-            idx = cols_lower.index(matches[0])
-            return df.columns[idx]
-    return None
-
-
-def responder_pergunta_chat(arquivo_nome: str, pergunta: str) -> str:
-    if not pergunta or not pergunta.strip():
-        return "Faça um pergunta ao Bob!"
-    palavras_pergunta = re.findall(r'\w+', pergunta.lower())
-    stopwords = {'o', 'a', 'de', 'que', 'e', 'do', 'da', 'em', 'um', 'para', 'com', 'não', 'uma', 'os', 'no', 'se',
-                 'na', 'por', 'mais', 'as', 'foi', 'está', 'são', 'sua', 'suas', 'seu', 'seus', 'você', 'estou',
-                 'estão'}
-    keywords = set(palavras_pergunta) - stopwords
-    if not keywords:
-        return "Não entendi a pergunta. Tente palavras-chave mais específicas!"
-
-    best_match = None
-    best_score = 0
-    if not os.path.exists(arquivo_nome):
-        return f"Arquivo '{arquivo_nome}' não encontrado na pasta do projeto."
-    try:
-        with open(arquivo_nome, 'r', encoding='utf-8') as f:
-            conteudo = f.read()
-        linhas = conteudo.split('\n')
-        for linha in linhas:
-            linha_limpa = linha.strip()
-            if len(linha_limpa) < 20:
-                continue
-            linha_lower = linha_limpa.lower()
-            score = sum(1 for kw in keywords if kw in linha_lower)
-            if score > best_score:
-                best_score = score
-                best_match = linha_limpa
-    except Exception as e:
-        return f"Erro ao ler arquivo: {str(e)}"
-    if best_match and best_score > 0:
-        return best_match
-    else:
-        return "Desculpe, não encontrei nada relevante. Tente reformular a pergunta!"
-
-
-def search_file(filename, query):
-    try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            lines = [line.strip() for line in f.readlines() if line.strip()]
-        query_lower = query.lower()
-        query_words = query_lower.split()
-        relevant = []
-        for line in lines:
-            line_lower = line.lower()
-            if query_lower in line_lower or any(word in line_lower for word in query_words):
-                relevant.append(line)
-        if relevant:
-            response = ' '.join(relevant[:10])[:2000]
-            return response + f"\n\nFonte: {filename}"
-        else:
-            return f"Desculpe, não encontrei informações relevantes sobre '{query}' no arquivo {filename}."
-    except FileNotFoundError:
-        return f"Arquivo {filename} não encontrado."
-    except Exception as e:
-        return f"Erro ao ler {filename}: {str(e)}"
-
-
 verificar_senha()
-glosas_df, proc_df, regras_gerais_df, regras_espec_df, produtos_df = carregar_dados()
+glosas_df, proc_df, regras_gerais_df, regras_espec_df, produtos_df = carregar_dados(ARQUIVO_EXCEL)
 
 # Validações
 colunas_glosas = ["n_da_glosa", "ativa", "descricao_interna", "tipo_de_glosa", "especialidade", "utilizacao",
@@ -324,15 +331,15 @@ if st.session_state.secao_ativa == "glosas":
 elif st.session_state.secao_ativa == "procedimentos":
     st.markdown("### 🔍 Tabela de Procedimentos")
 
-    if "proc_select" not in st.session_state:
-        st.session_state.proc_select = ""
-
     if "label_busca" not in proc_df.columns:
         proc_df["label_busca"] = (
             proc_df["tuss"].astype(str) + " - " +
             proc_df["codigo_interno"].astype(str) + " - " +
             proc_df["procedimento"].astype(str)
         )
+
+    if "proc_select" not in st.session_state:
+        st.session_state.proc_select = ""
 
     opcoes_proc = [""] + sorted(proc_df["label_busca"].unique().tolist())
     st.selectbox(
@@ -412,15 +419,11 @@ elif st.session_state.secao_ativa == "procedimentos":
         st.info("Selecione um procedimento para visualizar detalhes.")
 
 st.markdown("---")
-
 st.markdown("Faça uma Pergunta ao Bob")
 
-# Initialize session state (histórico único, com o assunto de cada pergunta salvo junto)
 if 'messages_bob' not in st.session_state:
     st.session_state.messages_bob = []
 
-# Seletor de assunto — evita ter dois st.chat_input fixos ao mesmo tempo,
-# que é o que causava o erro de DOM (removeChild) no navegador.
 assunto = st.radio(
     "Sobre o que é a sua pergunta?",
     ["Procedimentos", "Produtos"],
@@ -428,7 +431,6 @@ assunto = st.radio(
     key="assunto_bob"
 )
 
-# Reexibe o histórico já trocado nesta sessão
 for msg in st.session_state.messages_bob:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -439,14 +441,13 @@ placeholder = (
     else "Digite sua pergunta sobre produtos..."
 )
 
-# Único st.chat_input fixo na página, chamado sempre no mesmo lugar da árvore
 prompt_bob = st.chat_input(placeholder, key="chat_bob")
 if prompt_bob:
     st.session_state.messages_bob.append({"role": "user", "content": prompt_bob})
     with st.chat_message("user"):
         st.markdown(prompt_bob)
 
-    arquivo_busca = "Chat Auditoria Odontológica.txt" if assunto == "Procedimentos" else "Produtostxt.txt"
+    arquivo_busca = ARQUIVO_CHAT_PROCEDIMENTOS if assunto == "Procedimentos" else ARQUIVO_PRODUTOS_TXT
     response = search_file(arquivo_busca, prompt_bob)
 
     st.session_state.messages_bob.append({"role": "assistant", "content": response})
