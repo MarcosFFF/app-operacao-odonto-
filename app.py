@@ -403,8 +403,6 @@ def search_file(filename, query):
     except Exception as e:
         return f"Erro ao ler {filename}: {str(e)}"
 
-st.set_page_config(page_title="Pergunta ao Bob", page_icon="💬")
-
 st.markdown("Faça uma Pergunta ao Bob")
 
 # Initialize session states
@@ -425,8 +423,6 @@ if prompt_procedimentos:
     st.session_state.messages_procedimentos.append({"role": "assistant", "content": response})
     with st.chat_message("assistant"):
         st.markdown(response)
-    
-    st.rerun()
 
 prompt_produtos = st.chat_input("Digite sua pergunta sobre produtos...")
 if prompt_produtos:
