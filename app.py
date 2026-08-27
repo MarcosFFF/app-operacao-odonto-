@@ -277,14 +277,22 @@ ARQUIVO_PRODUTOS_TXT = encontrar_arquivo("Produtostxt*.txt") or encontrar_arquiv
 if ARQUIVO_IMG_FUNDO and os.path.exists(ARQUIVO_IMG_FUNDO):
     try:
         b64 = get_img_as_base64(ARQUIVO_IMG_FUNDO)
+        # O tipo MIME do data URI tem que bater com o formato real do arquivo.
+        # Antes estava fixo em "image/png" mesmo quando o arquivo era .jpg/.webp
+        # — o navegador recebe a instrução "isso é um PNG", tenta decodificar
+        # como PNG, falha silenciosamente (sem erro visível) e não desenha
+        # nada. Por isso a imagem "sumia" mesmo com o arquivo sendo encontrado.
+        _ext = os.path.splitext(ARQUIVO_IMG_FUNDO)[1].lower()
+        _mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}.get(_ext, "image/png")
         st.markdown(
             f"""
             <style>
                 .bg-top {{
-                    height: 40vh;
+                    height: 220px;
                     width: 100%;
-                    margin-top: -600px;
-                    background-image: url(data:image/png;base64,{b64});
+                    border-radius: 0.5rem;
+                    margin-bottom: 1rem;
+                    background-image: url(data:{_mime};base64,{b64});
                     background-size: cover;
                     background-position: center center;
                     background-repeat: no-repeat;
