@@ -260,8 +260,10 @@ ARQUIVO_EXCEL = encontrar_arquivo("AUDITORIA_ODONTO_2026*.xlsx")
 # do arquivo pode ser renomeado (ex.: "imagem_fundo (2)") e às vezes a
 # extensão muda de .png para .jpg no processo.
 ARQUIVO_IMG_FUNDO = (
-    encontrar_arquivo("imagem_fundo (2)*.png")
-    
+    encontrar_arquivo("imagem_fundo*.png")
+    or encontrar_arquivo("imagem_fundo*.jpg")
+    or encontrar_arquivo("imagem_fundo*.jpeg")
+    or encontrar_arquivo("imagem_fundo*.webp")
 )
 ARQUIVO_LOGO = encontrar_arquivo("logo*pbi*.jpg") or encontrar_arquivo("logo*pbi*.jpeg") or encontrar_arquivo("logo*pbi*.png")
 ARQUIVO_CHAT_PROCEDIMENTOS = (
