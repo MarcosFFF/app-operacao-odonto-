@@ -256,7 +256,15 @@ def responder_bob(pergunta, glosas_df, proc_df, regras_gerais_df, regras_espec_d
 # Caminhos dos arquivos de apoio (tolerantes a pequenas variações de nome)
 # ----------------------------------------------------------------------------
 ARQUIVO_EXCEL = encontrar_arquivo("AUDITORIA_ODONTO_2026*.xlsx")
-ARQUIVO_IMG_FUNDO = encontrar_arquivo("imagem_fundo*.png")
+# Aceita qualquer extensão de imagem comum (png/jpg/jpeg/webp), pois o nome
+# do arquivo pode ser renomeado (ex.: "imagem_fundo (2)") e às vezes a
+# extensão muda de .png para .jpg no processo.
+ARQUIVO_IMG_FUNDO = (
+    encontrar_arquivo("imagem_fundo*.png")
+    or encontrar_arquivo("imagem_fundo*.jpg")
+    or encontrar_arquivo("imagem_fundo*.jpeg")
+    or encontrar_arquivo("imagem_fundo*.webp")
+)
 ARQUIVO_LOGO = encontrar_arquivo("logo*pbi*.jpg") or encontrar_arquivo("logo*pbi*.jpeg") or encontrar_arquivo("logo*pbi*.png")
 ARQUIVO_CHAT_PROCEDIMENTOS = (
     encontrar_arquivo("Chat*Auditoria*Odontol*.txt")
