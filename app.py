@@ -17,6 +17,7 @@ def normalize_name(name):
     if pd.isna(name):
         return ''
     name = unicodedata.normalize('NFKD', str(name)).encode('ascii', 'ignore').decode('ascii').lower().strip()
+    name = re.sub(r'\s+', ' ', name)
     return name
 def encontrar_arquivo(padrao):
     """Procura um arquivo pelo padrão (glob), tolerando pequenas variações de nome
@@ -78,6 +79,179 @@ def limpar_decimal(x):
         return str(int(float(x)))
     except Exception:
         return str(x).strip()
+# ----------------------------------------------------------------------------
+# Motor do "Pergunte ao Bob"
+# ----------------------------------------------------------------------------
+# Em vez de vasculhar arquivos .txt soltos, o Bob consulta diretamente as
+# tabelas do AUDITORIA_ODONTO_2026.xlsx já carregadas (Glosas, Procedimentos,
+# Regras_Gerais, Regras_Especialidade, Produtos) e entende palavras
+# parecidas/com erro de digitação (ex.: "protese"/"prótese"/"prostese",
+# "ortodontia"/"ortodoncia") usando comparação aproximada de texto
+# (difflib), sem depender de nenhuma API externa.
+#
+# Se quiser ensinar sinônimos que não são apenas erro de digitação (ex.: uma
+# gíria interna que não parece com o termo oficial), acrescente no dicionário
+# abaixo: a chave é o termo que o usuário pode digitar e o valor é o termo
+# "oficial" que existe nas planilhas.
+SINONIMOS_BOB = {
+    "canal": "endodontia",
+    "aparelho": "ortodontia",
+    "extracao": "exodontia",
+}
+PALAVRAS_INTENCAO_BOB = {
+    "glosa": ["glosa", "glosas"],
+    "regra": ["regra", "regras", "norma", "normas"],
+    "produto": ["produto", "produtos", "cobertura", "cobre", "cobrem", "cobrir"],
+    "plano": ["plano", "planos"],
+}
+def _contem_termo_aproximado(pergunta_norm, termos, cutoff=0.78):
+    """Verifica se algum termo da lista aparece na pergunta, tolerando erro
+    de digitação (ex.: 'gloza' ainda é reconhecido como 'glosa')."""
+    palavras = pergunta_norm.split()
+    for termo in termos:
+        if termo in pergunta_norm:
+            return True
+        for p in palavras:
+            if difflib.SequenceMatcher(None, p, termo).ratio() >= cutoff:
+                return True
+    return False
+def _aplicar_sinonimos_bob(pergunta_norm):
+    for chave, valor in SINONIMOS_BOB.items():
+        if chave in pergunta_norm:
+            pergunta_norm = pergunta_norm + " " + valor
+    return pergunta_norm
+def _melhores_correspondencias(pergunta_norm, vocabulario, n=3, cutoff=0.45):
+    """Compara a pergunta com uma lista de valores conhecidos (especialidades,
+    nomes de procedimento, etc.) e devolve os mais parecidos, do melhor para
+    o pior. Cada palavra do item procurado é comparada com a palavra mais
+    parecida da pergunta — assim funciona mesmo se a pergunta tiver várias
+    outras palavras ao redor, e tolera erro de digitação."""
+    pergunta_palavras = pergunta_norm.split()
+    candidatos = []
+    for item in vocabulario:
+        item_norm = normalize_name(item)
+        if not item_norm:
+            continue
+        if item_norm in pergunta_norm:
+            candidatos.append((item, 1.0))
+            continue
+        item_palavras = item_norm.split()
+        if not item_palavras:
+            continue
+        scores_palavra = []
+        for iw in item_palavras:
+            melhor = max((difflib.SequenceMatcher(None, iw, pw).ratio() for pw in pergunta_palavras), default=0.0)
+            scores_palavra.append(melhor)
+        score = sum(scores_palavra) / len(scores_palavra)
+        if score >= cutoff:
+            candidatos.append((item, score))
+    candidatos.sort(key=lambda x: x[1], reverse=True)
+    return candidatos[:n]
+def _extrair_codigos(pergunta):
+    return [int(x) for x in re.findall(r'\d{2,6}', pergunta)]
+def responder_bob(pergunta, glosas_df, proc_df, regras_gerais_df, regras_espec_df, produtos_df):
+    pergunta_norm = _aplicar_sinonimos_bob(normalize_name(pergunta))
+    codigos = _extrair_codigos(pergunta)
+    especialidades_glosas = glosas_df['especialidade'].dropna().unique().tolist()
+    especialidades_proc = proc_df['especialidade'].dropna().unique().tolist()
+    especialidades_produtos = produtos_df['especialidade'].dropna().unique().tolist()
+    produtos_procedimentos_nomes = produtos_df['nome_do_procedimento'].dropna().unique().tolist()
+    LIMITE_PRODUTOS_LISTADOS = 25
+    # ---------- GLOSA ----------
+    if _contem_termo_aproximado(pergunta_norm, PALAVRAS_INTENCAO_BOB['glosa']):
+        esp_match = _melhores_correspondencias(pergunta_norm, especialidades_glosas, n=1, cutoff=0.5)
+        if esp_match:
+            especialidade, _ = esp_match[0]
+            linhas = glosas_df[glosas_df['especialidade'].apply(normalize_name) == normalize_name(especialidade)]
+            if not linhas.empty:
+                resp = [f"**Glosas aplicáveis à especialidade {especialidade}:**"]
+                for num in linhas['n_da_glosa'].unique():
+                    sub = linhas[linhas['n_da_glosa'] == num]
+                    desc = sub.iloc[0]['descricao_interna']
+                    resp.append(f"\n**{num} - {desc}**")
+                    for _, l in sub.iterrows():
+                        resp.append(f"- Subglosa: {l['subglosa']} | Como evitar: {l['como_evitar_a_glosa']}")
+                return '\n'.join(resp)
+        if codigos:
+            dados = glosas_df[glosas_df['n_da_glosa'] == str(codigos[0])]
+            if not dados.empty:
+                p = dados.iloc[0]
+                return f"**Glosa {p['n_da_glosa']} - {p['descricao_interna']}**\nComo evitar: {p['como_evitar_a_glosa']}"
+        return "Não identifiquei a especialidade ou o número da glosa na pergunta. Pode reformular citando a especialidade (ex.: endodontia) ou o número da glosa?"
+    # ---------- REGRA ----------
+    if _contem_termo_aproximado(pergunta_norm, PALAVRAS_INTENCAO_BOB['regra']):
+        if codigos:
+            cod = str(codigos[0])
+            linha = proc_df[proc_df['codigo_interno'] == cod]
+            if linha.empty:
+                linha = proc_df[proc_df['tuss'].astype(str).str.replace(r'\.0$', '', regex=True) == cod]
+            if not linha.empty:
+                row = linha.iloc[0]
+                resp = [f"**Procedimento {row['codigo_interno']} - {row['procedimento']}** (especialidade: {row['especialidade']})"]
+                resp.append(f"Normas técnicas: {row['normas_tecnicas_e_observacoes']}")
+                esp_norm = normalize_name(row['especialidade'])
+                regras_esp = regras_espec_df[regras_espec_df['especialidade'].apply(normalize_name) == esp_norm]
+                if not regras_esp.empty:
+                    resp.append("Regras da especialidade: " + '; '.join(regras_esp['regras_da_especialidade'].astype(str)))
+                return '\n'.join(resp)
+            return f"Não encontrei nenhum procedimento com o código {cod}."
+        esp_match = _melhores_correspondencias(pergunta_norm, especialidades_proc, n=1, cutoff=0.5)
+        if esp_match:
+            especialidade, _ = esp_match[0]
+            regras_esp = regras_espec_df[regras_espec_df['especialidade'].apply(normalize_name) == normalize_name(especialidade)]
+            if not regras_esp.empty:
+                return f"**Regras da especialidade {especialidade}:**\n" + '\n'.join(f"- {r}" for r in regras_esp['regras_da_especialidade'].astype(str))
+            return f"Não encontrei regra específica para {especialidade}."
+        return "**Regras gerais:**\n" + '\n'.join(f"- {r}" for r in regras_gerais_df['regras_gerais'].astype(str))
+    # ---------- PLANO cobre procedimento/especialidade ----------
+    if _contem_termo_aproximado(pergunta_norm, PALAVRAS_INTENCAO_BOB['plano']) and codigos:
+        cod_plano = str(codigos[0])
+        linhas_plano = produtos_df[produtos_df['codigo_do_produto'] == cod_plano]
+        if linhas_plano.empty:
+            return f"Não encontrei o plano de código {cod_plano} na base."
+        nome_plano = linhas_plano.iloc[0]['nome_do_produto']
+        esp_match = _melhores_correspondencias(pergunta_norm, especialidades_produtos, n=1, cutoff=0.5)
+        if esp_match:
+            especialidade, _ = esp_match[0]
+            cobre = linhas_plano[linhas_plano['especialidade'].apply(normalize_name) == normalize_name(especialidade)]
+            if not cobre.empty:
+                return f"Sim. O plano {cod_plano} ({nome_plano}) cobre procedimentos de {especialidade}."
+            return f"Não encontrei cobertura de {especialidade} para o plano {cod_plano} ({nome_plano})."
+        proc_match = _melhores_correspondencias(pergunta_norm, produtos_procedimentos_nomes, n=3, cutoff=0.5)
+        if proc_match:
+            respostas = []
+            for nome_proc, _ in proc_match:
+                cobre = linhas_plano[linhas_plano['nome_do_procedimento'] == nome_proc]
+                status = "cobre" if not cobre.empty else "NÃO cobre"
+                respostas.append(f"O plano {cod_plano} ({nome_plano}) {status} '{nome_proc}'.")
+            return '\n'.join(respostas)
+        return f"Encontrei o plano {cod_plano} ({nome_plano}), mas não identifiquei qual procedimento/especialidade você quer checar."
+    # ---------- PRODUTO / COBERTURA de um procedimento ----------
+    if _contem_termo_aproximado(pergunta_norm, PALAVRAS_INTENCAO_BOB['produto']):
+        proc_match = _melhores_correspondencias(pergunta_norm, produtos_procedimentos_nomes, n=3, cutoff=0.4)
+        if proc_match:
+            melhor_nome, melhor_score = proc_match[0]
+            cobrem = produtos_df[(produtos_df['nome_do_procedimento'] == melhor_nome) & (produtos_df['cobertura'] == 'sim')]
+            resp = [f"Procedimento identificado: **{melhor_nome}** (confiança: {melhor_score:.0%})"]
+            if not cobrem.empty:
+                nomes = sorted(cobrem['nome_do_produto'].unique())
+                if len(nomes) > LIMITE_PRODUTOS_LISTADOS:
+                    resp.append(
+                        f"Produtos que cobrem ({len(nomes)} no total, mostrando os {LIMITE_PRODUTOS_LISTADOS} primeiros): "
+                        + ', '.join(nomes[:LIMITE_PRODUTOS_LISTADOS]) + "..."
+                    )
+                else:
+                    resp.append("Produtos que cobrem: " + ', '.join(nomes))
+            else:
+                resp.append("Nenhum produto ativo cobre esse procedimento.")
+            if len(proc_match) > 1:
+                outros = ', '.join(f"'{n}'" for n, _ in proc_match[1:])
+                resp.append(f"(Se não era esse o procedimento, veja também: {outros})")
+            return '\n'.join(resp)
+        return "Não identifiquei qual procedimento você quer consultar a cobertura. Pode citar o nome dele?"
+    return ("Não entendi a pergunta. Tente usar palavras como 'glosa', 'regra', 'produto', 'cobertura' ou "
+            "'plano' junto com a especialidade, o procedimento ou o código (ex.: \"qual a regra do "
+            "procedimento 4250\", \"o plano 109 cobre ortodontia\").")
 # ----------------------------------------------------------------------------
 # Caminhos dos arquivos de apoio (tolerantes a pequenas variações de nome)
 # ----------------------------------------------------------------------------
@@ -402,35 +576,33 @@ elif st.session_state.secao_ativa == "procedimentos":
     else:
         st.info("Selecione um procedimento para visualizar detalhes.")
 # ----------------------------------------------------------------------------
-# "Faça uma Pergunta ao Bob" — OCULTO A PEDIDO. Bloco mantido no código,
-# apenas comentado, para poder reativar rapidamente no futuro: basta remover
-# o "# " do início de cada linha abaixo.
+# "Faça uma Pergunta ao Bob" — controlado por esta chave. Mantenha False para
+# a seção continuar oculta; mude para True quando quiser reativá-la.
+# O motor de respostas (responder_bob, definido lá em cima) agora consulta
+# diretamente as tabelas do Excel (Glosas, Procedimentos, Regras_Gerais,
+# Regras_Especialidade, Produtos) e tolera erro de digitação/variações de
+# escrita, em vez de fazer busca literal nos arquivos .txt de apoio.
 # ----------------------------------------------------------------------------
-# st.markdown("---")
-# st.markdown("Faça uma Pergunta ao Bob")
-# if 'messages_bob' not in st.session_state:
-#     st.session_state.messages_bob = []
-# assunto = st.radio(
-#     "Sobre o que é a sua pergunta?",
-#     ["Procedimentos", "Produtos"],
-#     horizontal=True,
-#     key="assunto_bob"
-# )
-# for msg in st.session_state.messages_bob:
-#     with st.chat_message(msg["role"]):
-#         st.markdown(msg["content"])
-# placeholder = (
-#     "Digite sua pergunta sobre procedimentos..."
-#     if assunto == "Procedimentos"
-#     else "Digite sua pergunta sobre produtos..."
-# )
-# prompt_bob = st.chat_input(placeholder, key="chat_bob")
-# if prompt_bob:
-#     st.session_state.messages_bob.append({"role": "user", "content": prompt_bob})
-#     with st.chat_message("user"):
-#         st.markdown(prompt_bob)
-#     arquivo_busca = ARQUIVO_CHAT_PROCEDIMENTOS if assunto == "Procedimentos" else ARQUIVO_PRODUTOS_TXT
-#     response = search_file(arquivo_busca, prompt_bob)
-#     st.session_state.messages_bob.append({"role": "assistant", "content": response})
-#     with st.chat_message("assistant"):
-#         st.markdown(response)
+EXIBIR_PERGUNTE_AO_BOB = False
+if EXIBIR_PERGUNTE_AO_BOB:
+    st.markdown("---")
+    st.markdown("Faça uma Pergunta ao Bob")
+    st.caption(
+        "Exemplos: \"qual a glosa posso aplicar para endodontia\", "
+        "\"qual a regra da especialidade de prótese\", \"qual a regra do procedimento 4250\", "
+        "\"qual produto dá cobertura para clareamento dental caseiro\", \"o plano 109 cobre ortodontia\""
+    )
+    if 'messages_bob' not in st.session_state:
+        st.session_state.messages_bob = []
+    for msg in st.session_state.messages_bob:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+    prompt_bob = st.chat_input("Digite sua pergunta sobre glosas, regras, procedimentos ou produtos...", key="chat_bob")
+    if prompt_bob:
+        st.session_state.messages_bob.append({"role": "user", "content": prompt_bob})
+        with st.chat_message("user"):
+            st.markdown(prompt_bob)
+        response = responder_bob(prompt_bob, glosas_df, proc_df, regras_gerais_df, regras_espec_df, produtos_df)
+        st.session_state.messages_bob.append({"role": "assistant", "content": response})
+        with st.chat_message("assistant"):
+            st.markdown(response)
