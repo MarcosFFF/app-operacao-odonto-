@@ -274,6 +274,23 @@ ARQUIVO_PRODUTOS_TXT = encontrar_arquivo("Produtostxt*.txt") or encontrar_arquiv
 # ----------------------------------------------------------------------------
 # Estilos / imagem de topo
 # ----------------------------------------------------------------------------
+def _proporcao_da_imagem(caminho, padrao=1376 / 469):
+    """Lê a proporção real (largura/altura) do arquivo. O banner do topo usa
+    essa proporção via CSS "aspect-ratio" em vez de uma altura fixa em
+    pixels — assim o "cover" nunca precisa cortar em cima/embaixo (cabeça ou
+    queixo), porque a caixa sempre tem exatamente o formato da imagem. Se a
+    largura da tela for MUITO maior que a altura máxima permitida
+    (max-height no CSS abaixo), pode cortar um pouquinho dos lados — nunca
+    de cima/baixo."""
+    try:
+        from PIL import Image as _PILImage
+        with _PILImage.open(caminho) as img:
+            largura, altura = img.size
+        if altura > 0:
+            return largura / altura
+    except Exception:
+        pass
+    return padrao
 if ARQUIVO_IMG_FUNDO and os.path.exists(ARQUIVO_IMG_FUNDO):
     try:
         b64 = get_img_as_base64(ARQUIVO_IMG_FUNDO)
@@ -284,12 +301,14 @@ if ARQUIVO_IMG_FUNDO and os.path.exists(ARQUIVO_IMG_FUNDO):
         # nada. Por isso a imagem "sumia" mesmo com o arquivo sendo encontrado.
         _ext = os.path.splitext(ARQUIVO_IMG_FUNDO)[1].lower()
         _mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}.get(_ext, "image/png")
+        _proporcao = _proporcao_da_imagem(ARQUIVO_IMG_FUNDO)
         st.markdown(
             f"""
             <style>
                 .bg-top {{
-                    height: 220px;
                     width: 100%;
+                    aspect-ratio: {_proporcao};
+                    max-height: 320px;
                     border-radius: 0.5rem;
                     margin-bottom: 1rem;
                     background-image: url(data:{_mime};base64,{b64});
