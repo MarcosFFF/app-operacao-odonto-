@@ -6,7 +6,19 @@ import re
 import unicodedata
 import base64
 import difflib
-st.set_page_config(page_title="Hapvida + Odonto", page_icon=(logo pbi or "📊"), layout="wide")
+def _icone_da_aba():
+    """Ícone da aba do navegador: usa o mesmo logo da tela de login (se
+    encontrado), para ficar igual ao das outras páginas (ex.: Gestão de
+    Sinistro) em vez do ícone padrão do Streamlit. Precisa rodar ANTES do
+    st.set_page_config abaixo, que é a única chamada que define esse ícone —
+    por isso não dá pra reaproveitar a variável ARQUIVO_LOGO, calculada
+    mais adiante no arquivo."""
+    for padrao in ("logo*pbi*.jpg", "logo*pbi*.jpeg", "logo*pbi*.png"):
+        candidatos = glob.glob(padrao)
+        if candidatos:
+            return candidatos[0]
+    return "🦷"
+st.set_page_config(page_title="Hapvida + Odonto", page_icon=_icone_da_aba(), layout="wide", initial_sidebar_state="collapsed")
 # ----------------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------------
