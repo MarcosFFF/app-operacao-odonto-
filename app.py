@@ -401,31 +401,36 @@ elif st.session_state.secao_ativa == "procedimentos":
             st.warning("Procedimento não encontrado.")
     else:
         st.info("Selecione um procedimento para visualizar detalhes.")
-st.markdown("---")
-st.markdown("Faça uma Pergunta ao Bob")
-if 'messages_bob' not in st.session_state:
-    st.session_state.messages_bob = []
-assunto = st.radio(
-    "Sobre o que é a sua pergunta?",
-    ["Procedimentos", "Produtos"],
-    horizontal=True,
-    key="assunto_bob"
-)
-for msg in st.session_state.messages_bob:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-placeholder = (
-    "Digite sua pergunta sobre procedimentos..."
-    if assunto == "Procedimentos"
-    else "Digite sua pergunta sobre produtos..."
-)
-prompt_bob = st.chat_input(placeholder, key="chat_bob")
-if prompt_bob:
-    st.session_state.messages_bob.append({"role": "user", "content": prompt_bob})
-    with st.chat_message("user"):
-        st.markdown(prompt_bob)
-    arquivo_busca = ARQUIVO_CHAT_PROCEDIMENTOS if assunto == "Procedimentos" else ARQUIVO_PRODUTOS_TXT
-    response = search_file(arquivo_busca, prompt_bob)
-    st.session_state.messages_bob.append({"role": "assistant", "content": response})
-    with st.chat_message("assistant"):
-        st.markdown(response)
+# ----------------------------------------------------------------------------
+# "Faça uma Pergunta ao Bob" — OCULTO A PEDIDO. Bloco mantido no código,
+# apenas comentado, para poder reativar rapidamente no futuro: basta remover
+# o "# " do início de cada linha abaixo.
+# ----------------------------------------------------------------------------
+# st.markdown("---")
+# st.markdown("Faça uma Pergunta ao Bob")
+# if 'messages_bob' not in st.session_state:
+#     st.session_state.messages_bob = []
+# assunto = st.radio(
+#     "Sobre o que é a sua pergunta?",
+#     ["Procedimentos", "Produtos"],
+#     horizontal=True,
+#     key="assunto_bob"
+# )
+# for msg in st.session_state.messages_bob:
+#     with st.chat_message(msg["role"]):
+#         st.markdown(msg["content"])
+# placeholder = (
+#     "Digite sua pergunta sobre procedimentos..."
+#     if assunto == "Procedimentos"
+#     else "Digite sua pergunta sobre produtos..."
+# )
+# prompt_bob = st.chat_input(placeholder, key="chat_bob")
+# if prompt_bob:
+#     st.session_state.messages_bob.append({"role": "user", "content": prompt_bob})
+#     with st.chat_message("user"):
+#         st.markdown(prompt_bob)
+#     arquivo_busca = ARQUIVO_CHAT_PROCEDIMENTOS if assunto == "Procedimentos" else ARQUIVO_PRODUTOS_TXT
+#     response = search_file(arquivo_busca, prompt_bob)
+#     st.session_state.messages_bob.append({"role": "assistant", "content": response})
+#     with st.chat_message("assistant"):
+#         st.markdown(response)
