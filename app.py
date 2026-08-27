@@ -6,34 +6,24 @@ import re
 import unicodedata
 import base64
 import difflib
-
 st.set_page_config(page_title="Hapvida + Odonto", layout="wide", initial_sidebar_state="collapsed")
-
-
 # ----------------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------------
-
 def get_img_as_base64(path):
     with open(path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
-
-
 def normalize_name(name):
     if pd.isna(name):
         return ''
     name = unicodedata.normalize('NFKD', str(name)).encode('ascii', 'ignore').decode('ascii').lower().strip()
     return name
-
-
 def encontrar_arquivo(padrao):
     """Procura um arquivo pelo padrão (glob), tolerando pequenas variações de nome
     (acentos, espaços, sufixos) que costumam quebrar entre Windows e o Linux do
     Streamlit Cloud. Retorna o primeiro encontrado ou None."""
     candidatos = glob.glob(padrao)
     return candidatos[0] if candidatos else None
-
-
 def ler_texto_arquivo(caminho):
     """Lê um .txt tentando utf-8 primeiro e caindo para latin-1/cp1252 se
     necessário. Alguns dos arquivos de apoio deste projeto foram exportados do
@@ -48,8 +38,6 @@ def ler_texto_arquivo(caminho):
             continue
     with open(caminho, "r", encoding="utf-8", errors="replace") as f:
         return f.read()
-
-
 def search_file(filename, query):
     if not filename or not os.path.exists(filename):
         return f"Arquivo '{filename}' não encontrado no projeto."
@@ -70,8 +58,6 @@ def search_file(filename, query):
             return f"Desculpe, não encontrei informações relevantes sobre '{query}'."
     except Exception as e:
         return f"Erro ao ler o arquivo de apoio: {e}"
-
-
 def find_column(df, keywords):
     cols_lower = [col.lower() for col in df.columns]
     for kw in keywords:
@@ -81,8 +67,17 @@ def find_column(df, keywords):
             idx = cols_lower.index(matches[0])
             return df.columns[idx]
     return None
-
-
+def limpar_decimal(x):
+    """Normaliza valores numéricos (que o pandas às vezes lê como int64/float,
+    às vezes como texto) para uma mesma representação em string, ex.: 407,
+    407.0 e '407' viram todos '407'. Isso evita que comparações do tipo
+    "407" == 407 (string vs número) falhem silenciosamente."""
+    if pd.isna(x) or x == "-":
+        return x
+    try:
+        return str(int(float(x)))
+    except Exception:
+        return str(x).strip()
 # ----------------------------------------------------------------------------
 # Caminhos dos arquivos de apoio (tolerantes a pequenas variações de nome)
 # ----------------------------------------------------------------------------
@@ -94,8 +89,6 @@ ARQUIVO_CHAT_PROCEDIMENTOS = (
     or encontrar_arquivo("Chat_Auditoria_Odontologica.txt")
 )
 ARQUIVO_PRODUTOS_TXT = encontrar_arquivo("Produtostxt*.txt") or encontrar_arquivo("Produtos*.txt")
-
-
 # ----------------------------------------------------------------------------
 # Estilos / imagem de topo
 # ----------------------------------------------------------------------------
@@ -121,7 +114,6 @@ if ARQUIVO_IMG_FUNDO and os.path.exists(ARQUIVO_IMG_FUNDO):
         st.markdown('<div class="bg-top"></div>', unsafe_allow_html=True)
     except Exception:
         pass
-
 st.markdown("""
 <style>
 .titulo-principal {
@@ -158,8 +150,6 @@ st.markdown("""
   }
 </style>
 """, unsafe_allow_html=True)
-
-
 # ----------------------------------------------------------------------------
 # Login
 # ----------------------------------------------------------------------------
@@ -203,8 +193,6 @@ def verificar_senha():
             else:
                 st.error("Senha incorreta! Tente novamente.")
         st.stop()
-
-
 # ----------------------------------------------------------------------------
 # Dados
 # ----------------------------------------------------------------------------
@@ -216,25 +204,21 @@ def carregar_dados(arquivo):
             "Verifique se ele foi enviado ao repositório com esse nome."
         )
         st.stop()
-
     def limpar_colunas(df):
         df.columns = df.columns.astype(str).str.strip()
         df.columns = df.columns.map(lambda x: unicodedata.normalize('NFKD', x).encode('ascii', 'ignore').decode('ascii'))
         df.columns = df.columns.str.lower().str.replace(r'[/\-\s]+', '_', regex=True)
         return df.fillna("-")
-
     glosas = pd.read_excel(arquivo, sheet_name="Glosas")
     procedimentos = pd.read_excel(arquivo, sheet_name="Procedimentos")
     regras_gerais = pd.read_excel(arquivo, sheet_name="Regras_Gerais")
     regras_espec = pd.read_excel(arquivo, sheet_name="Regras_Especialidade")
     produtos = pd.read_excel(arquivo, sheet_name="Produtos")
-
     glosas_limpo = limpar_colunas(glosas)
     proc_limpo = limpar_colunas(procedimentos)
     regras_gerais_limpo = limpar_colunas(regras_gerais)
     regras_espec_limpo = limpar_colunas(regras_espec)
     produtos_limpo = limpar_colunas(produtos)
-
     produtos_limpo = produtos_limpo.rename(columns={
         "produto": "codigo_do_produto",
         "descricao_completa": "nome_do_produto",
@@ -243,23 +227,16 @@ def carregar_dados(arquivo):
         "descricao_procedimento": "nome_do_procedimento",
         "grupo": "especialidade"
     })
-
-    def limpar_decimal(x):
-        if pd.isna(x) or x == "-":
-            return x
-        try:
-            return str(int(float(x)))
-        except Exception:
-            return str(x)
-
     proc_limpo['codigo_interno'] = proc_limpo['codigo_interno'].apply(limpar_decimal)
-
+    # "N DA GLOSA" às vezes vem como número (407) e às vezes como texto ("407")
+    # dependendo de como a linha foi digitada na planilha. Sem essa normalização,
+    # comparar o valor selecionado no combo (sempre string) com o valor da
+    # coluna (às vezes int64) falha e a glosa aparece como "não encontrada"
+    # mesmo existindo na base.
+    glosas_limpo['n_da_glosa'] = glosas_limpo['n_da_glosa'].apply(limpar_decimal)
     return glosas_limpo, proc_limpo, regras_gerais_limpo, regras_espec_limpo, produtos_limpo
-
-
 verificar_senha()
 glosas_df, proc_df, regras_gerais_df, regras_espec_df, produtos_df = carregar_dados(ARQUIVO_EXCEL)
-
 # Validações
 colunas_glosas = ["n_da_glosa", "ativa", "descricao_interna", "tipo_de_glosa", "especialidade", "utilizacao",
                    "subglosa", "como_evitar_a_glosa", "cabe_recurso", "como_recorrer", "justificativa",
@@ -268,17 +245,14 @@ colunas_glosas_faltando = [c for c in colunas_glosas if c not in glosas_df.colum
 if colunas_glosas_faltando:
     st.error(f"Colunas faltando em Glosas: {colunas_glosas_faltando}")
     st.stop()
-
 colunas_proc = ["codigo_interno", "tuss", "procedimento", "especialidade", "local_regiao",
                  "procedimentos_pre_aprovados", "pre_requisito", "longevidade", "normas_tecnicas_e_observacoes"]
 colunas_proc_faltando = [c for c in colunas_proc if c not in proc_df.columns]
 if colunas_proc_faltando:
     st.error(f"Colunas faltando em Procedimentos: {colunas_proc_faltando}")
     st.stop()
-
 if "secao_ativa" not in st.session_state:
     st.session_state.secao_ativa = None
-
 # TELA INICIAL: botões
 left_col, mid_col, right_col = st.columns([1, 1, 1])
 with left_col:
@@ -289,13 +263,28 @@ with mid_col:
     if st.button("📋 MANUAL DE GLOSAS", use_container_width=True, key="btn_glosas"):
         st.session_state.secao_ativa = "glosas"
         st.rerun()
-
 # CONTEÚDO CONDICIONAL
 if st.session_state.secao_ativa == "glosas":
     st.markdown("### Manual de Glosas")
     glosas_list = glosas_df.to_dict('records')
-    opcoes_glosa = sorted([f"{g['n_da_glosa']} - {g['descricao_interna']}" for g in glosas_list])
-
+    # Uma mesma glosa (mesmo "N DA GLOSA") pode ter várias linhas na planilha,
+    # uma para cada especialidade/subglosa. O combo deve mostrar cada glosa
+    # UMA única vez; o detalhamento por especialidade/subglosa continua sendo
+    # feito mais abaixo, nos expanders, usando todas as linhas daquele número.
+    descricao_por_glosa = {}
+    for g in glosas_list:
+        num = g["n_da_glosa"]
+        if num not in descricao_por_glosa:
+            descricao_por_glosa[num] = g["descricao_interna"]
+    def _chave_ordenacao_glosa(num):
+        try:
+            return (0, int(num))
+        except (ValueError, TypeError):
+            return (1, str(num))
+    opcoes_glosa = [
+        f"{num} - {descricao_por_glosa[num]}"
+        for num in sorted(descricao_por_glosa.keys(), key=_chave_ordenacao_glosa)
+    ]
     selecao_glosa = st.selectbox(
         "Digite o número da glosa ou descrição:",
         [""] + opcoes_glosa,
@@ -303,8 +292,8 @@ if st.session_state.secao_ativa == "glosas":
         key="select_glosa"
     )
     if selecao_glosa:
-        glosa_id = selecao_glosa.split(" - ")[0]
-        dados_glosa = [g for g in glosas_list if g["n_da_glosa"] == glosa_id]
+        glosa_id = selecao_glosa.split(" - ", 1)[0].strip()
+        dados_glosa = [g for g in glosas_list if str(g["n_da_glosa"]).strip() == glosa_id]
         if dados_glosa:
             primeira = dados_glosa[0]
             st.markdown('<div class="titulo-azul">Detalhes da Glosa</div>', unsafe_allow_html=True)
@@ -327,20 +316,16 @@ if st.session_state.secao_ativa == "glosas":
             st.warning("Glosa não encontrada.")
     else:
         st.info("Selecione uma glosa para visualizar detalhes.")
-
 elif st.session_state.secao_ativa == "procedimentos":
     st.markdown("### 🔍 Tabela de Procedimentos")
-
     if "label_busca" not in proc_df.columns:
         proc_df["label_busca"] = (
             proc_df["tuss"].astype(str) + " - " +
             proc_df["codigo_interno"].astype(str) + " - " +
             proc_df["procedimento"].astype(str)
         )
-
     if "proc_select" not in st.session_state:
         st.session_state.proc_select = ""
-
     opcoes_proc = [""] + sorted(proc_df["label_busca"].unique().tolist())
     st.selectbox(
         "Selecione um procedimento:",
@@ -400,7 +385,6 @@ elif st.session_state.secao_ativa == "procedimentos":
                         .str.lower()
                     )
                     match_regras = regras_espec_df[especialidades_regras == especialidade_proc]
-
                     if not match_regras.empty and "regras_da_especialidade" in match_regras.columns:
                         regras = match_regras["regras_da_especialidade"].dropna().astype(str).str.strip()
                         regras = regras[regras != ""]
@@ -417,39 +401,31 @@ elif st.session_state.secao_ativa == "procedimentos":
             st.warning("Procedimento não encontrado.")
     else:
         st.info("Selecione um procedimento para visualizar detalhes.")
-
 st.markdown("---")
 st.markdown("Faça uma Pergunta ao Bob")
-
 if 'messages_bob' not in st.session_state:
     st.session_state.messages_bob = []
-
 assunto = st.radio(
     "Sobre o que é a sua pergunta?",
     ["Procedimentos", "Produtos"],
     horizontal=True,
     key="assunto_bob"
 )
-
 for msg in st.session_state.messages_bob:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-
 placeholder = (
     "Digite sua pergunta sobre procedimentos..."
     if assunto == "Procedimentos"
     else "Digite sua pergunta sobre produtos..."
 )
-
 prompt_bob = st.chat_input(placeholder, key="chat_bob")
 if prompt_bob:
     st.session_state.messages_bob.append({"role": "user", "content": prompt_bob})
     with st.chat_message("user"):
         st.markdown(prompt_bob)
-
     arquivo_busca = ARQUIVO_CHAT_PROCEDIMENTOS if assunto == "Procedimentos" else ARQUIVO_PRODUTOS_TXT
     response = search_file(arquivo_busca, prompt_bob)
-
     st.session_state.messages_bob.append({"role": "assistant", "content": response})
     with st.chat_message("assistant"):
         st.markdown(response)
