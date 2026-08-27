@@ -294,7 +294,7 @@ if ARQUIVO_IMG_FUNDO and os.path.exists(ARQUIVO_IMG_FUNDO):
                     margin-bottom: 1rem;
                     background-image: url(data:{_mime};base64,{b64});
                     background-size: cover;
-                    background-position: center center;
+                    background-position: center top;
                     background-repeat: no-repeat;
                 }}
             </style>
