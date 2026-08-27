@@ -590,17 +590,19 @@ elif st.session_state.secao_ativa == "bob":
         "\"qual a regra da especialidade de prótese\", \"qual a regra do procedimento 4250\", "
         "\"qual produto dá cobertura para clareamento dental caseiro\", \"o plano 109 cobre ortodontia\""
     )
-    if 'messages_bob' not in st.session_state:
-        st.session_state.messages_bob = []
-    for msg in st.session_state.messages_bob:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+    # Guarda só a última pergunta/resposta (não um histórico) — a cada nova
+    # pergunta, a anterior é substituída em vez de acumular na tela.
+    if 'ultima_pergunta_bob' not in st.session_state:
+        st.session_state.ultima_pergunta_bob = None
+        st.session_state.ultima_resposta_bob = None
     prompt_bob = st.chat_input("Digite sua pergunta sobre glosas, regras, procedimentos ou produtos...", key="chat_bob")
     if prompt_bob:
-        st.session_state.messages_bob.append({"role": "user", "content": prompt_bob})
+        st.session_state.ultima_pergunta_bob = prompt_bob
+        st.session_state.ultima_resposta_bob = responder_bob(
+            prompt_bob, glosas_df, proc_df, regras_gerais_df, regras_espec_df, produtos_df
+        )
+    if st.session_state.ultima_pergunta_bob:
         with st.chat_message("user"):
-            st.markdown(prompt_bob)
-        response = responder_bob(prompt_bob, glosas_df, proc_df, regras_gerais_df, regras_espec_df, produtos_df)
-        st.session_state.messages_bob.append({"role": "assistant", "content": response})
+            st.markdown(st.session_state.ultima_pergunta_bob)
         with st.chat_message("assistant"):
-            st.markdown(response)
+            st.markdown(st.session_state.ultima_resposta_bob)
