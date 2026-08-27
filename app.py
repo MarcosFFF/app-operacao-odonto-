@@ -437,6 +437,10 @@ with mid_col:
     if st.button("📋 MANUAL DE GLOSAS", use_container_width=True, key="btn_glosas"):
         st.session_state.secao_ativa = "glosas"
         st.rerun()
+with right_col:
+    if st.button("🤖 PERGUNTE AO BOB", use_container_width=True, key="btn_bob"):
+        st.session_state.secao_ativa = "bob"
+        st.rerun()
 # CONTEÚDO CONDICIONAL
 if st.session_state.secao_ativa == "glosas":
     st.markdown("### Manual de Glosas")
@@ -575,18 +579,12 @@ elif st.session_state.secao_ativa == "procedimentos":
             st.warning("Procedimento não encontrado.")
     else:
         st.info("Selecione um procedimento para visualizar detalhes.")
-# ----------------------------------------------------------------------------
-# "Faça uma Pergunta ao Bob" — controlado por esta chave. Mantenha False para
-# a seção continuar oculta; mude para True quando quiser reativá-la.
-# O motor de respostas (responder_bob, definido lá em cima) agora consulta
-# diretamente as tabelas do Excel (Glosas, Procedimentos, Regras_Gerais,
-# Regras_Especialidade, Produtos) e tolera erro de digitação/variações de
-# escrita, em vez de fazer busca literal nos arquivos .txt de apoio.
-# ----------------------------------------------------------------------------
-EXIBIR_PERGUNTE_AO_BOB = True
-if EXIBIR_PERGUNTE_AO_BOB:
-    st.markdown("---")
-    st.markdown("Faça uma Pergunta ao Bob")
+elif st.session_state.secao_ativa == "bob":
+    # O motor de respostas (responder_bob, definido lá em cima) consulta
+    # diretamente as tabelas do Excel (Glosas, Procedimentos, Regras_Gerais,
+    # Regras_Especialidade, Produtos) e tolera erro de digitação/variações de
+    # escrita, em vez de fazer busca literal nos arquivos .txt de apoio.
+    st.markdown("### 🤖 Pergunte ao Bob")
     st.caption(
         "Exemplos: \"qual a glosa posso aplicar para endodontia\", "
         "\"qual a regra da especialidade de prótese\", \"qual a regra do procedimento 4250\", "
