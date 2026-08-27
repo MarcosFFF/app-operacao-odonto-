@@ -583,7 +583,7 @@ elif st.session_state.secao_ativa == "procedimentos":
 # Regras_Especialidade, Produtos) e tolera erro de digitação/variações de
 # escrita, em vez de fazer busca literal nos arquivos .txt de apoio.
 # ----------------------------------------------------------------------------
-EXIBIR_PERGUNTE_AO_BOB = False
+EXIBIR_PERGUNTE_AO_BOB = True
 if EXIBIR_PERGUNTE_AO_BOB:
     st.markdown("---")
     st.markdown("Faça uma Pergunta ao Bob")
