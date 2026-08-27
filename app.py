@@ -6,7 +6,7 @@ import re
 import unicodedata
 import base64
 import difflib
-st.set_page_config(page_title="Hapvida + Odonto", page_icon=(logo pbi or "📊"), layout="wide"))
+st.set_page_config(page_title="Hapvida + Odonto", page_icon=(logo pbi or "📊"), layout="wide")
 # ----------------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------------
